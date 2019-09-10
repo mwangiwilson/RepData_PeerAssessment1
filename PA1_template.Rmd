@@ -6,20 +6,108 @@ output:
 ---
 
 
+
+
 ## Loading and preprocessing the data
 
+We start by reading the activity data from the csv file and transforming dates.
 
+```{r readdata}
+data <- read.csv("activity.csv")
+data$date <- as.Date(data$date, "%Y-%m-%d")
+```
 
 ## What is mean total number of steps taken per day?
 
+First, we compute the number of steps recorded by day and plot them as histogram.
 
+```{r stepsbyday}
+daily.steps <- tapply(data$steps, data$date, sum, na.rm = TRUE)
+daily.steps.df <- data.frame(date=names(daily.steps), daily.steps=daily.steps)
+ggplot(daily.steps.df, aes(x=daily.steps)) + geom_histogram(color="black", fill="white", binwidth = 1000) + labs(x = "Number of daily steps", y = "Number of days")
+```
+
+The mean and median of daily number of steps are now computed.
+
+```{r stepsbydaysummary}
+mean(daily.steps.df$daily.steps)
+median(daily.steps.df$daily.steps)
+```
 
 ## What is the average daily activity pattern?
 
+We plot the number of steps (averaged across all days) per 5-minute interval.
 
+```{r dailypattern}
+ggplot(data, aes(x=interval, y=steps, group=1)) + stat_summary(fun.y = mean, geom='line', na.rm = TRUE ) + labs(x = "5-minute day interval", y = "Average number of steps")
+```
+
+We now find the 5-minute interval which, on average, contains the maximum number of steps.
+
+```{r dailypatternmaximum}
+interval.steps <- tapply(data$steps, data$interval, mean, na.rm = TRUE)
+interval.steps.df <- data.frame(interval=as.integer(names(interval.steps)), average.interval.steps=interval.steps)
+max.interval.steps <- max(interval.steps.df$average.interval.steps)
+interval.steps.df[which(interval.steps.df$average.interval.steps == max.interval.steps),]
+```
 
 ## Imputing missing values
 
+The dataset contains several NAs. The total number of NAs is obtained below.
 
+```{r nascount}
+sum(is.na(data$steps))
+```
+
+In order to fill the missing values, each NA is replaced by the mean for the corresponding 5-minute interval.
+
+```{r nasreplace}
+replace.na.by.interval.mean = function(row, intervalsdata){
+    if (is.na(row['steps'])){
+        interval = as.integer(row['interval'])
+        intervalsdata[intervalsdata['interval'] == interval,"average.interval.steps"]
+    } else{
+        as.integer(row['steps'])
+    }
+}
+data.imputed <- data
+data.imputed$steps <- apply(data.imputed, 1, replace.na.by.interval.mean, interval.steps.df)
+```
+
+We can now check that there is no NA in the new data frame.
+
+```{r nascountimputed}
+sum(is.na(data.imputed$steps))
+```
+
+The histogram with imputed values can now be generated.
+
+```{r stepsbydayimputed}
+daily.steps.imputed <- tapply(data.imputed$steps, data.imputed$date, sum, na.rm = TRUE)
+daily.steps.imputed.df <- data.frame(date=names(daily.steps.imputed), daily.steps=daily.steps.imputed)
+ggplot(daily.steps.imputed.df, aes(x=daily.steps)) + geom_histogram(color="black", fill="white", binwidth = 1000) + labs(x = "Number of daily steps", y = "Number of days")
+```
+
+The mean and median of daily number of steps with imputed missing values are now computed.
+
+```{r stepsbydaysummaryimputed}
+mean(daily.steps.imputed.df$daily.steps)
+median(daily.steps.imputed.df$daily.steps)
+```
+
+The mean & median increased when imputing missing values, which is consistent with one's expactations because NAs (counted as 0 in the previous results) are now replaced by the average interval values.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+We start by creating a factor variable indicating whether the day is weekday or weekend.
+
+```{r weekdayweekendfactor}
+weekends <- c("Saturday", "Sunday")
+data.imputed$day.type <- as.factor(ifelse(weekdays(data.imputed$date) %in% weekends,"weekend","weekday"))
+```
+
+Finally, we can plot the activity patterns by 5-minute intervals averaged for weekdays and weekends.
+
+```{r weekdayweekendpattern}
+ggplot(data=data.imputed, aes(x=interval, y = steps)) + stat_summary(fun.y = mean, geom='line') + facet_grid(day.type~.) + labs(x = "5-minute day interval", y = "Average number of steps")
+```
